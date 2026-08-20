@@ -28,7 +28,16 @@ function ExamDone() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
   }, []);
 
-  const info = data && "examTitle" in data ? data : null;
+  type Summary = {
+    examTitle: string;
+    studentName: string;
+    rollNumber: string;
+    submittedAt: string;
+    autoSubmitted: boolean;
+    score?: number | null;
+    totalMarks?: number | null;
+  };
+  const info = data && !(data as { error?: string }).error ? (data as Summary) : null;
 
   return (
     <div className="grid min-h-screen place-items-center bg-brand-base px-6 text-brand-ink">
