@@ -28,7 +28,7 @@ function ExamDone() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
   }, []);
 
-  const info = data && !("error" in data) ? data : null;
+  const info = data && !("error" in data && data.error) ? (data as Exclude<typeof data, { error: string }>) : null;
 
   return (
     <div className="grid min-h-screen place-items-center bg-brand-base px-6 text-brand-ink">
