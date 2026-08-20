@@ -10,33 +10,73 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ExamBriefRouteImport } from './routes/exam.brief'
+import { Route as ExamDoneRouteImport } from './routes/exam.done'
+import { Route as ExamTakeRouteImport } from './routes/exam.take'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExamBriefRoute = ExamBriefRouteImport.update({
+  id: '/exam/brief',
+  path: '/exam/brief',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExamDoneRoute = ExamDoneRouteImport.update({
+  id: '/exam/done',
+  path: '/exam/done',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExamTakeRoute = ExamTakeRouteImport.update({
+  id: '/exam/take',
+  path: '/exam/take',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/exam/brief': typeof ExamBriefRoute
+  '/exam/done': typeof ExamDoneRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/exam/brief': typeof ExamBriefRoute
+  '/exam/done': typeof ExamDoneRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/exam/brief': typeof ExamBriefRoute
+  '/exam/done': typeof ExamDoneRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/auth' | '/exam/brief' | '/exam/done' | '/exam/take'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/auth' | '/exam/brief' | '/exam/done' | '/exam/take'
+  id: '__root__' | '/' | '/auth' | '/exam/brief' | '/exam/done' | '/exam/take'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
+  ExamBriefRoute: typeof ExamBriefRoute
+  ExamDoneRoute: typeof ExamDoneRoute
+  ExamTakeRoute: typeof ExamTakeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +88,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exam/brief': {
+      id: '/exam/brief'
+      path: '/exam/brief'
+      fullPath: '/exam/brief'
+      preLoaderRoute: typeof ExamBriefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exam/done': {
+      id: '/exam/done'
+      path: '/exam/done'
+      fullPath: '/exam/done'
+      preLoaderRoute: typeof ExamDoneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exam/take': {
+      id: '/exam/take'
+      path: '/exam/take'
+      fullPath: '/exam/take'
+      preLoaderRoute: typeof ExamTakeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
+  ExamBriefRoute: ExamBriefRoute,
+  ExamDoneRoute: ExamDoneRoute,
+  ExamTakeRoute: ExamTakeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
