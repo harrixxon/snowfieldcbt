@@ -343,3 +343,51 @@ export const studentLogout = createServerFn({ method: "POST" }).handler(async ()
   await session.clear();
   return { ok: true };
 });
+
+export const getBrief = createServerFn({ method: "POST" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { studentSession } = await import("@/lib/exam.server");
+
+  const session = await studentSession();
+  const { studentId, examId, attemptId } = session.data;
+  if (!studentId || !examId) return { error: "Session expired. Please log in again." };
+
+  const [{ data: exam }, { data: student }] = await Promise.all([
+    supabaseAdmin
+      .from("exams")
+      .select("title, subject_id, exam_code, num_questions, duration_minutes, instructions, end_time")
+      .eq("id", examId)
+      .maybeSingle(),
+    supabaseAdmin.from("students").select("full_name, roll_number").eq("id", studentId).maybeSingle(),
+  ]);
+  if (!exam) return { error: "Exam not found." };
+
+  const { data: subject } = await supabaseAdmin
+    .from("subjects")
+    .select("name")
+    .eq("id", exam.subject_id)
+    .maybeSingle();
+
+  let submitted = false;
+  if (attemptId) {
+    const { data: attempt } = await supabaseAdmin
+      .from("exam_attempts")
+      .select("submitted_at")
+      .eq("id", attemptId)
+      .maybeSingle();
+    submitted = Boolean(attempt?.submitted_at);
+  }
+
+  return {
+    title: exam.title,
+    subject: subject?.name ?? "",
+    examCode: exam.exam_code,
+    numQuestions: exam.num_questions,
+    durationMinutes: exam.duration_minutes,
+    instructions: exam.instructions,
+    studentName: student?.full_name ?? "",
+    rollNumber: student?.roll_number ?? "",
+    resuming: Boolean(attemptId) && !submitted,
+    submitted,
+  };
+});
