@@ -65,13 +65,13 @@ function ExamTake() {
   }, [state]);
 
   const doSubmit = useCallback(
-    async (auto: boolean) => {
+    async (_auto: boolean) => {
       if (submittedRef.current) return;
       submittedRef.current = true;
       setSubmitting(true);
       await finish({});
       if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
-      await navigate({ to: "/exam/done", search: { auto: auto ? 1 : 0 } });
+      await navigate({ to: "/exam/done" });
     },
     [finish, navigate],
   );
@@ -109,7 +109,7 @@ function ExamTake() {
 
   useEffect(() => {
     if (data && !("error" in data) && data.submitted) {
-      void navigate({ to: "/exam/done", search: { auto: data.autoSubmitted ? 1 : 0 } });
+      void navigate({ to: "/exam/done" });
     }
   }, [data, navigate]);
 

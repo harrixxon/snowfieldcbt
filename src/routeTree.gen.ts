@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ExamBriefRouteImport } from './routes/exam.brief'
+import { Route as ExamTakeRouteImport } from './routes/exam.take'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const ExamBriefRoute = ExamBriefRouteImport.update({
   path: '/exam/brief',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExamTakeRoute = ExamTakeRouteImport.update({
+  id: '/exam/take',
+  path: '/exam/take',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/exam/brief': typeof ExamBriefRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/exam/brief': typeof ExamBriefRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/exam/brief': typeof ExamBriefRoute
+  '/exam/take': typeof ExamTakeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/exam/brief'
+  fullPaths: '/' | '/exam/brief' | '/exam/take'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/exam/brief'
-  id: '__root__' | '/' | '/exam/brief'
+  to: '/' | '/exam/brief' | '/exam/take'
+  id: '__root__' | '/' | '/exam/brief' | '/exam/take'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ExamBriefRoute: typeof ExamBriefRoute
+  ExamTakeRoute: typeof ExamTakeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExamBriefRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/exam/take': {
+      id: '/exam/take'
+      path: '/exam/take'
+      fullPath: '/exam/take'
+      preLoaderRoute: typeof ExamTakeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ExamBriefRoute: ExamBriefRoute,
+  ExamTakeRoute: ExamTakeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
