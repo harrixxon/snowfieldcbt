@@ -3,9 +3,9 @@ import { useSession } from "@tanstack/react-start/server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export type StudentSessionData = {
-  attemptId?: string;
-  studentId?: string;
-  examId?: string;
+  attemptId?: string | undefined;
+  studentId?: string | undefined;
+  examId?: string | undefined;
 };
 
 function sessionConfig() {

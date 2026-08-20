@@ -51,11 +51,12 @@ export const studentLogin = createServerFn({ method: "POST" })
     if (attempt?.submitted_at) return { error: "You have already submitted this exam." };
 
     const session = await studentSession();
-    await session.update({
-      studentId: student.id,
-      examId: exam.id,
-      ...(attempt ? { attemptId: attempt.id } : { attemptId: undefined }),
-    });
+    await session.clear();
+    await session.update(
+      attempt
+        ? { studentId: student.id, examId: exam.id, attemptId: attempt.id }
+        : { studentId: student.id, examId: exam.id },
+    );
 
     return {
       student: { fullName: student.full_name, rollNumber: data.rollNumber.toUpperCase() },
