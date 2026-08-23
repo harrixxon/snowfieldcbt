@@ -13,6 +13,14 @@ function sessionConfig() {
     password: process.env["STUDENT_SESSION_SECRET"]!,
     name: "cbt-student-session",
     maxAge: 60 * 60 * 6,
+    cookie: {
+      path: "/",
+      httpOnly: true,
+      // The app is rendered inside an iframe in the Lovable preview, so the
+      // session cookie must be cross-site capable or the browser drops it.
+      sameSite: "none" as const,
+      secure: true,
+    },
   };
 }
 
