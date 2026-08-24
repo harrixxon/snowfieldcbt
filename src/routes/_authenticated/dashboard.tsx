@@ -181,6 +181,7 @@ function Dashboard() {
         {tab === "questions" ? (
           <QuestionsPanel
             subjects={subjects.data ?? []}
+            classes={classes.data ?? []}
             questions={questions.data ?? []}
             teacherId={me?.id ?? ""}
             isAdmin={isAdmin}
@@ -200,7 +201,9 @@ function Dashboard() {
           />
         ) : null}
 
-        {tab === "results" ? <ResultsPanel exams={exams.data ?? []} /> : null}
+        {tab === "results" ? (
+          <ResultsPanel exams={exams.data ?? []} classes={classes.data ?? []} subjects={subjects.data ?? []} />
+        ) : null}
       </main>
     </div>
   );
