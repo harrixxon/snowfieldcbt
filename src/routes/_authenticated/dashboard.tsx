@@ -79,7 +79,12 @@ function Dashboard() {
   const questions = useQuery({
     queryKey: ["questions"],
     queryFn: async () =>
-      (await supabase.from("questions").select("*, subjects(name)").order("created_at", { ascending: false }))
+      (
+        await supabase
+          .from("questions")
+          .select("*, subjects(name, class_id, classes(name))")
+          .order("created_at", { ascending: false })
+      )
         .data ?? [],
   });
   const exams = useQuery({
@@ -176,6 +181,7 @@ function Dashboard() {
         {tab === "questions" ? (
           <QuestionsPanel
             subjects={subjects.data ?? []}
+            classes={classes.data ?? []}
             questions={questions.data ?? []}
             teacherId={me?.id ?? ""}
             isAdmin={isAdmin}
@@ -195,7 +201,9 @@ function Dashboard() {
           />
         ) : null}
 
-        {tab === "results" ? <ResultsPanel exams={exams.data ?? []} /> : null}
+        {tab === "results" ? (
+          <ResultsPanel exams={exams.data ?? []} classes={classes.data ?? []} subjects={subjects.data ?? []} />
+        ) : null}
       </main>
     </div>
   );
@@ -237,6 +245,7 @@ function SchoolPanel({
   const [className, setClassName] = useState("");
   const [subjectName, setSubjectName] = useState("");
   const [subjectClass, setSubjectClass] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -312,18 +321,53 @@ function SchoolPanel({
           </select>
           <button className={btnClass}>Add subject</button>
         </form>
-        <ul className="mt-6 space-y-2">
-          {subjects.map((s) => (
-            <li
-              key={String(s['id'])}
-              className="flex justify-between rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
-            >
-              <span>{String(s['name'])}</span>
-              <span className="text-muted-foreground">
-                {String((s['classes'] as { name?: string } | null)?.name ?? "")}
-              </span>
-            </li>
-          ))}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+        </div>
+        <ul className="mt-4 space-y-2">
+          {subjects
+            .filter((s) => !subjectFilter || String(s['class_id']) === subjectFilter)
+            .map((s) => (
+              <li
+                key={String(s['id'])}
+                className="flex items-center justify-between gap-3 rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
+              >
+                <span>
+                  {String(s['name'])}{" "}
+                  <span className="text-muted-foreground">
+                    · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-destructive"
+                  onClick={async () => {
+                    if (!confirm(`Delete subject "${String(s['name'])}"? Its questions and exams will be removed too.`))
+                      return;
+                    const { error: err } = await supabase.from("subjects").delete().eq("id", String(s['id']));
+                    setError(err?.message ?? null);
+                    if (!err) {
+                      onChange("subjects");
+                      onChange("questions");
+                      onChange("exams");
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
         </ul>
       </Panel>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -349,6 +393,11 @@ function PeoplePanel({
   const [studentClass, setStudentClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
   const [message, setMessage] = useState<string | null>(null);
+  const [studentFilter, setStudentFilter] = useState("");
+  const visibleStudents = useMemo(
+    () => students.filter((s) => !studentFilter || String(s['class_id']) === studentFilter),
+    [students, studentFilter],
+  );
 
   const studentMutation = useMutation({
     mutationFn: () => addStudent({ data: { fullName: studentName.trim(), classId: studentClass } }),
@@ -404,16 +453,43 @@ function PeoplePanel({
         </form>
       </Panel>
 
-      <Panel title={`Students (${students.length})`}>
+      <Panel title={`Students (${visibleStudents.length})`}>
+        <select
+          className={`${inputClass} mb-4 max-w-xs`}
+          value={studentFilter}
+          onChange={(e) => setStudentFilter(e.target.value)}
+        >
+          <option value="">All classes</option>
+          {classes.map((c) => (
+            <option key={String(c['id'])} value={String(c['id'])}>
+              {String(c['name'])}
+            </option>
+          ))}
+        </select>
         <div className="max-h-80 overflow-y-auto rounded-[12px] ring-1 ring-brand-line">
           <table className="w-full text-sm">
             <tbody>
-              {students.map((s) => (
+              {visibleStudents.map((s) => (
                 <tr key={String(s['id'])} className="border-b border-brand-line bg-card last:border-0">
                   <td className="px-4 py-3 font-medium">{String(s['roll_number'])}</td>
                   <td className="px-4 py-3">{String(s['full_name'])}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (!confirm(`Delete ${String(s['full_name'])}? Their exam attempts will be removed too.`))
+                          return;
+                        const { error: err } = await supabase.from("students").delete().eq("id", String(s['id']));
+                        setMessage(err?.message ?? "Student deleted.");
+                        if (!err) onChange("students");
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -493,12 +569,14 @@ function PeoplePanel({
 
 function QuestionsPanel({
   subjects,
+  classes,
   questions,
   teacherId,
   isAdmin,
   onChange,
 }: {
   subjects: Row[];
+  classes: Row[];
   questions: Row[];
   teacherId: string;
   isAdmin: boolean;
@@ -507,6 +585,18 @@ function QuestionsPanel({
   const empty = { subjectId: "", text: "", a: "", b: "", c: "", d: "", correct: "A", marks: 1 };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const visible = useMemo(
+    () =>
+      questions.filter((q) => {
+        const subj = q['subjects'] as { class_id?: string } | null;
+        if (subjectFilter && String(q['subject_id']) !== subjectFilter) return false;
+        if (classFilter && String(subj?.class_id ?? "") !== classFilter) return false;
+        return true;
+      }),
+    [questions, classFilter, subjectFilter],
+  );
 
   return (
     <>
@@ -593,17 +683,67 @@ function QuestionsPanel({
         </Panel>
       ) : null}
 
-      <Panel title={`Question bank (${questions.length})`}>
+      <Panel title={`Question bank (${visible.length})`}>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value);
+              setSubjectFilter("");
+            }}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All subjects</option>
+            {subjects
+              .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+              .map((s) => (
+                <option key={String(s['id'])} value={String(s['id'])}>
+                  {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                </option>
+              ))}
+          </select>
+        </div>
         <ul className="space-y-2">
-          {questions.map((q) => (
-            <li key={String(q['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
-              <p className="font-medium">{String(q['question_text'])}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {String((q['subjects'] as { name?: string } | null)?.name ?? "")} · Answer{" "}
-                {String(q['correct_option'])} · {String(q['marks'])} mark(s)
-              </p>
-            </li>
-          ))}
+          {visible.map((q) => {
+            const subj = q['subjects'] as { name?: string; classes?: { name?: string } | null } | null;
+            return (
+              <li key={String(q['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium">{String(q['question_text'])}</p>
+                  {isAdmin || String(q['teacher_id']) === teacherId ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (!confirm("Delete this question?")) return;
+                        const { error: err } = await supabase.from("questions").delete().eq("id", String(q['id']));
+                        setError(err?.message ?? null);
+                        if (!err) onChange("questions");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {subj?.name ?? ""} · {subj?.classes?.name ?? ""} · Answer {String(q['correct_option'])} ·{" "}
+                  {String(q['marks'])} mark(s)
+                </p>
+              </li>
+            );
+          })}
         </ul>
       </Panel>
     </>
@@ -688,7 +828,7 @@ function ExamsPanel({
                 <option value="">Select subject</option>
                 {subjects.map((s) => (
                   <option key={String(s['id'])} value={String(s['id'])}>
-                    {String(s['name'])}
+                    {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
                   </option>
                 ))}
               </select>
@@ -767,15 +907,67 @@ function ExamsPanel({
         </Panel>
       ) : null}
 
-      <Panel title={`Exams (${exams.length})`}>
+      <Panel title={`Exams (${visibleExams.length})`}>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value);
+              setSubjectFilter("");
+            }}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All subjects</option>
+            {subjects
+              .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+              .map((s) => (
+                <option key={String(s['id'])} value={String(s['id'])}>
+                  {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                </option>
+              ))}
+          </select>
+        </div>
         <ul className="space-y-2">
-          {exams.map((x) => (
+          {visibleExams.map((x) => (
             <li key={String(x['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">{String(x['title'])}</span>
-                <span className="rounded-full bg-brand-accent/10 px-3 py-1 text-xs font-medium text-brand-accent">
-                  {String(x['exam_code'])}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-brand-accent/10 px-3 py-1 text-xs font-medium text-brand-accent">
+                    {String(x['exam_code'])}
+                  </span>
+                  {isAdmin || String(x['teacher_id']) === teacherId ? (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            `Delete "${String(x['title'])}"? All attempts and answers for this exam will be removed.`,
+                          )
+                        )
+                          return;
+                        const { error: err } = await supabase.from("exams").delete().eq("id", String(x['id']));
+                        setError(err?.message ?? null);
+                        if (!err) onChange("exams");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {String((x['subjects'] as { name?: string } | null)?.name ?? "")} ·{" "}
@@ -787,36 +979,105 @@ function ExamsPanel({
             </li>
           ))}
         </ul>
+        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
       </Panel>
     </>
   );
 }
 
-function ResultsPanel({ exams }: { exams: Row[] }) {
+function ResultsPanel({ exams, classes, subjects }: { exams: Row[]; classes: Row[]; subjects: Row[] }) {
   const [examId, setExamId] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+
+  const visibleExams = useMemo(
+    () =>
+      exams.filter((x) => {
+        if (classFilter && String(x['class_id']) !== classFilter) return false;
+        if (subjectFilter && String(x['subject_id']) !== subjectFilter) return false;
+        return true;
+      }),
+    [exams, classFilter, subjectFilter],
+  );
+
+  const selectedExists = visibleExams.some((x) => String(x['id']) === examId);
+  const activeExamId = selectedExists ? examId : "";
+
   const results = useQuery({
-    queryKey: ["results", examId],
-    enabled: !!examId,
+    queryKey: ["results", activeExamId],
+    enabled: !!activeExamId,
     queryFn: async () =>
       (
         await supabase
           .from("exam_attempts")
           .select("id, score, total_marks, submitted_at, auto_submitted, tab_switch_events, students(full_name, roll_number)")
-          .eq("exam_id", examId)
+          .eq("exam_id", activeExamId)
           .order("score", { ascending: false })
       ).data ?? [],
   });
 
+  const rows = results.data ?? [];
+  const graded = rows.filter((r) => r.score !== null);
+  const average =
+    graded.length > 0 ? graded.reduce((sum, r) => sum + Number(r.score ?? 0), 0) / graded.length : null;
+
   return (
     <Panel title="Results">
-      <select className={`${inputClass} max-w-md`} value={examId} onChange={(e) => setExamId(e.target.value)}>
-        <option value="">Select an exam</option>
-        {exams.map((x) => (
-          <option key={String(x['id'])} value={String(x['id'])}>
-            {String(x['title'])} · {String(x['exam_code'])}
-          </option>
-        ))}
-      </select>
+      <div className="flex flex-wrap gap-3">
+        <select
+          className={`${inputClass} max-w-xs`}
+          value={classFilter}
+          onChange={(e) => {
+            setClassFilter(e.target.value);
+            setSubjectFilter("");
+            setExamId("");
+          }}
+        >
+          <option value="">All classes</option>
+          {classes.map((c) => (
+            <option key={String(c['id'])} value={String(c['id'])}>
+              {String(c['name'])}
+            </option>
+          ))}
+        </select>
+        <select
+          className={`${inputClass} max-w-xs`}
+          value={subjectFilter}
+          onChange={(e) => {
+            setSubjectFilter(e.target.value);
+            setExamId("");
+          }}
+        >
+          <option value="">All subjects</option>
+          {subjects
+            .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+            .map((s) => (
+              <option key={String(s['id'])} value={String(s['id'])}>
+                {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+              </option>
+            ))}
+        </select>
+        <select
+          className={`${inputClass} max-w-md`}
+          value={activeExamId}
+          onChange={(e) => setExamId(e.target.value)}
+        >
+          <option value="">Select an exam ({visibleExams.length} match)</option>
+          {visibleExams.map((x) => (
+            <option key={String(x['id'])} value={String(x['id'])}>
+              {String(x['title'])} · {String((x['classes'] as { name?: string } | null)?.name ?? "")} ·{" "}
+              {String(x['exam_code'])}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {activeExamId ? (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {rows.length} attempt(s) · {graded.length} graded
+          {average !== null ? ` · average score ${average.toFixed(1)}` : ""}
+        </p>
+      ) : null}
 
       <div className="mt-6 overflow-hidden rounded-[12px] ring-1 ring-brand-line">
         <table className="w-full text-sm">
@@ -830,7 +1091,7 @@ function ResultsPanel({ exams }: { exams: Row[] }) {
             </tr>
           </thead>
           <tbody>
-            {(results.data ?? []).map((r) => {
+            {rows.map((r) => {
               const student = r.students as { full_name?: string; roll_number?: string } | null;
               const events = Array.isArray(r.tab_switch_events) ? r.tab_switch_events.length : 0;
               return (

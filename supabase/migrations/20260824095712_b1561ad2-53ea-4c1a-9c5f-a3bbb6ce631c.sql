@@ -1,0 +1,2 @@
+CREATE POLICY "admin delete questions" ON public.questions FOR DELETE TO authenticated USING (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "admin delete exams" ON public.exams FOR DELETE TO authenticated USING (has_role(auth.uid(), 'admin'::app_role));
