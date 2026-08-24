@@ -448,16 +448,43 @@ function PeoplePanel({
         </form>
       </Panel>
 
-      <Panel title={`Students (${students.length})`}>
+      <Panel title={`Students (${visibleStudents.length})`}>
+        <select
+          className={`${inputClass} mb-4 max-w-xs`}
+          value={studentFilter}
+          onChange={(e) => setStudentFilter(e.target.value)}
+        >
+          <option value="">All classes</option>
+          {classes.map((c) => (
+            <option key={String(c['id'])} value={String(c['id'])}>
+              {String(c['name'])}
+            </option>
+          ))}
+        </select>
         <div className="max-h-80 overflow-y-auto rounded-[12px] ring-1 ring-brand-line">
           <table className="w-full text-sm">
             <tbody>
-              {students.map((s) => (
+              {visibleStudents.map((s) => (
                 <tr key={String(s['id'])} className="border-b border-brand-line bg-card last:border-0">
                   <td className="px-4 py-3 font-medium">{String(s['roll_number'])}</td>
                   <td className="px-4 py-3">{String(s['full_name'])}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (!confirm(`Delete ${String(s['full_name'])}? Their exam attempts will be removed too.`))
+                          return;
+                        const { error: err } = await supabase.from("students").delete().eq("id", String(s['id']));
+                        setMessage(err?.message ?? "Student deleted.");
+                        if (!err) onChange("students");
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
