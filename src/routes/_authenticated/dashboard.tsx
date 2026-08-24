@@ -320,18 +320,53 @@ function SchoolPanel({
           </select>
           <button className={btnClass}>Add subject</button>
         </form>
-        <ul className="mt-6 space-y-2">
-          {subjects.map((s) => (
-            <li
-              key={String(s['id'])}
-              className="flex justify-between rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
-            >
-              <span>{String(s['name'])}</span>
-              <span className="text-muted-foreground">
-                {String((s['classes'] as { name?: string } | null)?.name ?? "")}
-              </span>
-            </li>
-          ))}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+        </div>
+        <ul className="mt-4 space-y-2">
+          {subjects
+            .filter((s) => !subjectFilter || String(s['class_id']) === subjectFilter)
+            .map((s) => (
+              <li
+                key={String(s['id'])}
+                className="flex items-center justify-between gap-3 rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
+              >
+                <span>
+                  {String(s['name'])}{" "}
+                  <span className="text-muted-foreground">
+                    · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-destructive"
+                  onClick={async () => {
+                    if (!confirm(`Delete subject "${String(s['name'])}"? Its questions and exams will be removed too.`))
+                      return;
+                    const { error: err } = await supabase.from("subjects").delete().eq("id", String(s['id']));
+                    setError(err?.message ?? null);
+                    if (!err) {
+                      onChange("subjects");
+                      onChange("questions");
+                      onChange("exams");
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
         </ul>
       </Panel>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
