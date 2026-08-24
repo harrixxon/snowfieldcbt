@@ -79,7 +79,12 @@ function Dashboard() {
   const questions = useQuery({
     queryKey: ["questions"],
     queryFn: async () =>
-      (await supabase.from("questions").select("*, subjects(name)").order("created_at", { ascending: false }))
+      (
+        await supabase
+          .from("questions")
+          .select("*, subjects(name, class_id, classes(name))")
+          .order("created_at", { ascending: false })
+      )
         .data ?? [],
   });
   const exams = useQuery({
