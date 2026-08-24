@@ -828,7 +828,7 @@ function ExamsPanel({
                 <option value="">Select subject</option>
                 {subjects.map((s) => (
                   <option key={String(s['id'])} value={String(s['id'])}>
-                    {String(s['name'])}
+                    {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
                   </option>
                 ))}
               </select>
