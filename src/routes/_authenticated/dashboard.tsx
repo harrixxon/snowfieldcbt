@@ -569,12 +569,14 @@ function PeoplePanel({
 
 function QuestionsPanel({
   subjects,
+  classes,
   questions,
   teacherId,
   isAdmin,
   onChange,
 }: {
   subjects: Row[];
+  classes: Row[];
   questions: Row[];
   teacherId: string;
   isAdmin: boolean;
@@ -583,6 +585,18 @@ function QuestionsPanel({
   const empty = { subjectId: "", text: "", a: "", b: "", c: "", d: "", correct: "A", marks: 1 };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const visible = useMemo(
+    () =>
+      questions.filter((q) => {
+        const subj = q['subjects'] as { class_id?: string } | null;
+        if (subjectFilter && String(q['subject_id']) !== subjectFilter) return false;
+        if (classFilter && String(subj?.class_id ?? "") !== classFilter) return false;
+        return true;
+      }),
+    [questions, classFilter, subjectFilter],
+  );
 
   return (
     <>
