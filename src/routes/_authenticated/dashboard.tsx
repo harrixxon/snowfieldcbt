@@ -245,6 +245,7 @@ function SchoolPanel({
   const [className, setClassName] = useState("");
   const [subjectName, setSubjectName] = useState("");
   const [subjectClass, setSubjectClass] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   return (
