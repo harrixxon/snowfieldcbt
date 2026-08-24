@@ -907,15 +907,67 @@ function ExamsPanel({
         </Panel>
       ) : null}
 
-      <Panel title={`Exams (${exams.length})`}>
+      <Panel title={`Exams (${visibleExams.length})`}>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value);
+              setSubjectFilter("");
+            }}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All subjects</option>
+            {subjects
+              .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+              .map((s) => (
+                <option key={String(s['id'])} value={String(s['id'])}>
+                  {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                </option>
+              ))}
+          </select>
+        </div>
         <ul className="space-y-2">
-          {exams.map((x) => (
+          {visibleExams.map((x) => (
             <li key={String(x['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">{String(x['title'])}</span>
-                <span className="rounded-full bg-brand-accent/10 px-3 py-1 text-xs font-medium text-brand-accent">
-                  {String(x['exam_code'])}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-brand-accent/10 px-3 py-1 text-xs font-medium text-brand-accent">
+                    {String(x['exam_code'])}
+                  </span>
+                  {isAdmin || String(x['teacher_id']) === teacherId ? (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            `Delete "${String(x['title'])}"? All attempts and answers for this exam will be removed.`,
+                          )
+                        )
+                          return;
+                        const { error: err } = await supabase.from("exams").delete().eq("id", String(x['id']));
+                        setError(err?.message ?? null);
+                        if (!err) onChange("exams");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 {String((x['subjects'] as { name?: string } | null)?.name ?? "")} ·{" "}
@@ -927,36 +979,105 @@ function ExamsPanel({
             </li>
           ))}
         </ul>
+        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
       </Panel>
     </>
   );
 }
 
-function ResultsPanel({ exams }: { exams: Row[] }) {
+function ResultsPanel({ exams, classes, subjects }: { exams: Row[]; classes: Row[]; subjects: Row[] }) {
   const [examId, setExamId] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
+
+  const visibleExams = useMemo(
+    () =>
+      exams.filter((x) => {
+        if (classFilter && String(x['class_id']) !== classFilter) return false;
+        if (subjectFilter && String(x['subject_id']) !== subjectFilter) return false;
+        return true;
+      }),
+    [exams, classFilter, subjectFilter],
+  );
+
+  const selectedExists = visibleExams.some((x) => String(x['id']) === examId);
+  const activeExamId = selectedExists ? examId : "";
+
   const results = useQuery({
-    queryKey: ["results", examId],
-    enabled: !!examId,
+    queryKey: ["results", activeExamId],
+    enabled: !!activeExamId,
     queryFn: async () =>
       (
         await supabase
           .from("exam_attempts")
           .select("id, score, total_marks, submitted_at, auto_submitted, tab_switch_events, students(full_name, roll_number)")
-          .eq("exam_id", examId)
+          .eq("exam_id", activeExamId)
           .order("score", { ascending: false })
       ).data ?? [],
   });
 
+  const rows = results.data ?? [];
+  const graded = rows.filter((r) => r.score !== null);
+  const average =
+    graded.length > 0 ? graded.reduce((sum, r) => sum + Number(r.score ?? 0), 0) / graded.length : null;
+
   return (
     <Panel title="Results">
-      <select className={`${inputClass} max-w-md`} value={examId} onChange={(e) => setExamId(e.target.value)}>
-        <option value="">Select an exam</option>
-        {exams.map((x) => (
-          <option key={String(x['id'])} value={String(x['id'])}>
-            {String(x['title'])} · {String(x['exam_code'])}
-          </option>
-        ))}
-      </select>
+      <div className="flex flex-wrap gap-3">
+        <select
+          className={`${inputClass} max-w-xs`}
+          value={classFilter}
+          onChange={(e) => {
+            setClassFilter(e.target.value);
+            setSubjectFilter("");
+            setExamId("");
+          }}
+        >
+          <option value="">All classes</option>
+          {classes.map((c) => (
+            <option key={String(c['id'])} value={String(c['id'])}>
+              {String(c['name'])}
+            </option>
+          ))}
+        </select>
+        <select
+          className={`${inputClass} max-w-xs`}
+          value={subjectFilter}
+          onChange={(e) => {
+            setSubjectFilter(e.target.value);
+            setExamId("");
+          }}
+        >
+          <option value="">All subjects</option>
+          {subjects
+            .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+            .map((s) => (
+              <option key={String(s['id'])} value={String(s['id'])}>
+                {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+              </option>
+            ))}
+        </select>
+        <select
+          className={`${inputClass} max-w-md`}
+          value={activeExamId}
+          onChange={(e) => setExamId(e.target.value)}
+        >
+          <option value="">Select an exam ({visibleExams.length} match)</option>
+          {visibleExams.map((x) => (
+            <option key={String(x['id'])} value={String(x['id'])}>
+              {String(x['title'])} · {String((x['classes'] as { name?: string } | null)?.name ?? "")} ·{" "}
+              {String(x['exam_code'])}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {activeExamId ? (
+        <p className="mt-4 text-xs text-muted-foreground">
+          {rows.length} attempt(s) · {graded.length} graded
+          {average !== null ? ` · average score ${average.toFixed(1)}` : ""}
+        </p>
+      ) : null}
 
       <div className="mt-6 overflow-hidden rounded-[12px] ring-1 ring-brand-line">
         <table className="w-full text-sm">
@@ -970,7 +1091,7 @@ function ResultsPanel({ exams }: { exams: Row[] }) {
             </tr>
           </thead>
           <tbody>
-            {(results.data ?? []).map((r) => {
+            {rows.map((r) => {
               const student = r.students as { full_name?: string; roll_number?: string } | null;
               const events = Array.isArray(r.tab_switch_events) ? r.tab_switch_events.length : 0;
               return (
