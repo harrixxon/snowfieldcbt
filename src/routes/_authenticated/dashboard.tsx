@@ -393,6 +393,11 @@ function PeoplePanel({
   const [studentClass, setStudentClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
   const [message, setMessage] = useState<string | null>(null);
+  const [studentFilter, setStudentFilter] = useState("");
+  const visibleStudents = useMemo(
+    () => students.filter((s) => !studentFilter || String(s['class_id']) === studentFilter),
+    [students, studentFilter],
+  );
 
   const studentMutation = useMutation({
     mutationFn: () => addStudent({ data: { fullName: studentName.trim(), classId: studentClass } }),
