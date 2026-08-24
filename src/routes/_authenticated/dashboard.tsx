@@ -669,17 +669,67 @@ function QuestionsPanel({
         </Panel>
       ) : null}
 
-      <Panel title={`Question bank (${questions.length})`}>
+      <Panel title={`Question bank (${visible.length})`}>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value);
+              setSubjectFilter("");
+            }}
+          >
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+          >
+            <option value="">All subjects</option>
+            {subjects
+              .filter((s) => !classFilter || String(s['class_id']) === classFilter)
+              .map((s) => (
+                <option key={String(s['id'])} value={String(s['id'])}>
+                  {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+                </option>
+              ))}
+          </select>
+        </div>
         <ul className="space-y-2">
-          {questions.map((q) => (
-            <li key={String(q['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
-              <p className="font-medium">{String(q['question_text'])}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {String((q['subjects'] as { name?: string } | null)?.name ?? "")} · Answer{" "}
-                {String(q['correct_option'])} · {String(q['marks'])} mark(s)
-              </p>
-            </li>
-          ))}
+          {visible.map((q) => {
+            const subj = q['subjects'] as { name?: string; classes?: { name?: string } | null } | null;
+            return (
+              <li key={String(q['id'])} className="rounded-[8px] bg-card p-4 text-sm ring-1 ring-brand-line">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium">{String(q['question_text'])}</p>
+                  {isAdmin || String(q['teacher_id']) === teacherId ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-medium text-destructive"
+                      onClick={async () => {
+                        if (!confirm("Delete this question?")) return;
+                        const { error: err } = await supabase.from("questions").delete().eq("id", String(q['id']));
+                        setError(err?.message ?? null);
+                        if (!err) onChange("questions");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {subj?.name ?? ""} · {subj?.classes?.name ?? ""} · Answer {String(q['correct_option'])} ·{" "}
+                  {String(q['marks'])} mark(s)
+                </p>
+              </li>
+            );
+          })}
         </ul>
       </Panel>
     </>
