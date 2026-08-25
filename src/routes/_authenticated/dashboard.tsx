@@ -779,10 +779,22 @@ function ExamsPanel({
     showScore: false,
   });
   const [error, setError] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("");
 
   const available = useMemo(
     () => questions.filter((q) => String(q['subject_id']) === form.subjectId).length,
     [questions, form.subjectId],
+  );
+
+  const visibleExams = useMemo(
+    () =>
+      exams.filter((x) => {
+        if (classFilter && String(x['class_id']) !== classFilter) return false;
+        if (subjectFilter && String(x['subject_id']) !== subjectFilter) return false;
+        return true;
+      }),
+    [exams, classFilter, subjectFilter],
   );
 
   return (
