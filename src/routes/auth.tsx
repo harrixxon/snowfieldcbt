@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { adminExists, bootstrapAdmin } from "@/lib/staff.functions";
+import { adminExists, bootstrapAdmin, isAdminEmail } from "@/lib/staff.functions";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -30,9 +30,10 @@ function StaffAuth() {
   const navigate = useNavigate();
   const checkAdmin = useServerFn(adminExists);
   const createAdmin = useServerFn(bootstrapAdmin);
+  const checkAdminEmail = useServerFn(isAdminEmail);
   const { data: adminState } = useQuery({ queryKey: ["admin-exists"], queryFn: () => checkAdmin({}) });
 
-  const [mode, setMode] = useState<"signin" | "setup">("signin");
+  const [mode, setMode] = useState<"signin" | "setup" | "forgot">("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +42,7 @@ function StaffAuth() {
   const [busy, setBusy] = useState(false);
 
   const setupAvailable = adminState ? !adminState.exists : false;
-  const active = setupAvailable && mode === "setup" ? "setup" : "signin";
+  const active = mode === "forgot" ? "forgot" : setupAvailable && mode === "setup" ? "setup" : "signin";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +50,22 @@ function StaffAuth() {
     setError(null);
     setNotice(null);
     try {
+      if (active === "forgot") {
+        const check = await checkAdminEmail({ data: { email } });
+        if (!check.allowed) {
+          setError("Password resets are only available for the school administrator email.");
+          return;
+        }
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (resetError) {
+          setError(resetError.message);
+          return;
+        }
+        setNotice("A reset link has been sent to the administrator email. Check your inbox.");
+        return;
+      }
       if (active === "setup") {
         const result = await createAdmin({ data: { fullName, email, password } });
         if ("error" in result && result.error) {
@@ -83,10 +100,14 @@ function StaffAuth() {
 
       <main className="mx-auto max-w-[44ch] px-6 py-20">
         <span className="text-xs font-medium uppercase tracking-widest text-brand-accent">
-          {active === "setup" ? "First-time setup" : "Staff sign-in"}
+          {active === "setup" ? "First-time setup" : active === "forgot" ? "Password recovery" : "Staff sign-in"}
         </span>
         <h1 className="mt-4 text-4xl font-serif leading-tight text-balance">
-          {active === "setup" ? "Create the school administrator account." : "Sign in to your staff account."}
+          {active === "setup"
+            ? "Create the school administrator account."
+            : active === "forgot"
+              ? "Recover the administrator account."
+              : "Sign in to your staff account."}
         </h1>
 
         <form onSubmit={onSubmit} className="mt-12 space-y-4">
@@ -94,7 +115,9 @@ function StaffAuth() {
             <Field label="Full name" value={fullName} onChange={setFullName} />
           ) : null}
           <Field label="Email" type="email" value={email} onChange={setEmail} />
-          <Field label="Password" type="password" value={password} onChange={setPassword} />
+          {active !== "forgot" ? (
+            <Field label="Password" type="password" value={password} onChange={setPassword} />
+          ) : null}
 
           {error ? (
             <p className="rounded-[8px] bg-destructive/5 p-3 text-sm text-destructive ring-1 ring-destructive/20">
@@ -112,22 +135,45 @@ function StaffAuth() {
             disabled={busy}
             className="w-full rounded-[8px] bg-brand-ink px-6 py-3 text-sm font-medium text-brand-base ring-1 ring-brand-ink disabled:opacity-60"
           >
-            {busy ? "Please wait…" : active === "setup" ? "Create administrator" : "Sign in"}
+            {busy
+              ? "Please wait…"
+              : active === "setup"
+                ? "Create administrator"
+                : active === "forgot"
+                  ? "Send reset link"
+                  : "Sign in"}
           </button>
         </form>
 
-        {setupAvailable ? (
+        <div className="mt-6 flex flex-col items-start gap-2">
+          {setupAvailable ? (
+            <button
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                setMode(active === "setup" ? "signin" : "setup");
+              }}
+              className="text-xs font-medium text-muted-foreground hover:text-brand-ink"
+            >
+              {active === "setup" ? "I already have an account" : "No administrator yet? Set one up"}
+            </button>
+          ) : null}
           <button
-            onClick={() => setMode(active === "setup" ? "signin" : "setup")}
-            className="mt-6 text-xs font-medium text-muted-foreground hover:text-brand-ink"
+            onClick={() => {
+              setError(null);
+              setNotice(null);
+              setMode(active === "forgot" ? "signin" : "forgot");
+            }}
+            className="text-xs font-medium text-muted-foreground hover:text-brand-ink"
           >
-            {active === "setup" ? "I already have an account" : "No administrator yet? Set one up"}
+            {active === "forgot" ? "Back to sign-in" : "Forgot password?"}
           </button>
-        ) : (
-          <p className="mt-6 text-[11px] text-muted-foreground">
-            Teacher accounts are created by the school administrator.
-          </p>
-        )}
+          {!setupAvailable ? (
+            <p className="text-[11px] text-muted-foreground">
+              Teacher accounts are created by the school administrator.
+            </p>
+          ) : null}
+        </div>
       </main>
     </div>
   );
