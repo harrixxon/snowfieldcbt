@@ -128,3 +128,23 @@ export const createStudent = createServerFn({ method: "POST" })
     }
     return { error: "Could not generate a unique roll number. Try again." };
   });
+
+/** True only when the email belongs to the school administrator account. */
+export const isAdminEmail = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ email: z.string().trim().email() }).parse(data))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows } = await supabaseAdmin
+      .from("staff")
+      .select("id")
+      .ilike("email", data.email)
+      .limit(1);
+    const id = rows?.[0]?.id;
+    if (!id) return { allowed: false as const };
+    const { count } = await supabaseAdmin
+      .from("user_roles")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", id)
+      .eq("role", "admin");
+    return { allowed: (count ?? 0) > 0 };
+  });
