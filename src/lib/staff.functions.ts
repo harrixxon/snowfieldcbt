@@ -71,7 +71,36 @@ export const createTeacher = createServerFn({ method: "POST" })
       subject_specialisation: data.subject ?? null,
     });
     await supabaseAdmin.from("user_roles").insert({ user_id: created.user.id, role: "teacher" });
+
+    const { encryptPassword } = await import("@/lib/password.server");
+    await supabaseAdmin.from("teacher_passwords").insert({
+      user_id: created.user.id,
+      encrypted_password: encryptPassword(data.password),
+    });
+
     return { ok: true as const };
+  });
+
+export const getTeacherPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => z.object({ teacherId: z.string().uuid() }).parse(data))
+  .handler(async ({ data, context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    if (!isAdmin) return { error: "Only administrators can view teacher passwords." };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row } = await supabaseAdmin
+      .from("teacher_passwords")
+      .select("encrypted_password")
+      .eq("user_id", data.teacherId)
+      .maybeSingle();
+    if (!row) return { error: "No stored password found." };
+
+    const { decryptPassword } = await import("@/lib/password.server");
+    return { password: decryptPassword(row.encrypted_password) };
   });
 
 export const deleteTeacher = createServerFn({ method: "POST" })

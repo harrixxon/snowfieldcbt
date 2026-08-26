@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { createStudent, createTeacher, deleteTeacher } from "@/lib/staff.functions";
+import { createStudent, createTeacher, deleteTeacher, getTeacherPassword } from "@/lib/staff.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
@@ -389,11 +389,13 @@ function PeoplePanel({
   const addStudent = useServerFn(createStudent);
   const addTeacher = useServerFn(createTeacher);
   const removeTeacher = useServerFn(deleteTeacher);
+  const viewPassword = useServerFn(getTeacherPassword);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [studentFilter, setStudentFilter] = useState("");
+  const [teacherPasswords, setTeacherPasswords] = useState<Record<string, string | undefined>>({});
   const visibleStudents = useMemo(
     () => students.filter((s) => !studentFilter || String(s['class_id']) === studentFilter),
     [students, studentFilter],
@@ -541,25 +543,60 @@ function PeoplePanel({
         </form>
 
         <ul className="mt-6 space-y-2">
-          {teachers.map((t) => (
-            <li
-              key={String(t['id'])}
-              className="flex items-center justify-between rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
-            >
-              <span>
-                {String(t['full_name'])} <span className="text-muted-foreground">· {String(t['email'])}</span>
-              </span>
-              <button
-                onClick={async () => {
-                  await removeTeacher({ data: { teacherId: String(t['id']) } });
-                  onChange("teachers");
-                }}
-                className="text-xs font-medium text-destructive"
+          {teachers.map((t) => {
+            const id = String(t["id"]);
+            const revealed = teacherPasswords[id];
+            return (
+              <li
+                key={id}
+                className="flex items-center justify-between rounded-[8px] bg-card px-4 py-3 text-sm ring-1 ring-brand-line"
               >
-                Remove
-              </button>
-            </li>
-          ))}
+                <span>
+                  {String(t["full_name"])}{" "}
+                  <span className="text-muted-foreground">· {String(t["email"])}</span>
+                </span>
+                <div className="flex items-center gap-3">
+                  {revealed ? (
+                    <>
+                      <span className="font-mono text-xs">{revealed}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTeacherPasswords((prev) => ({ ...prev, [id]: undefined }))
+                        }
+                        className="text-xs text-muted-foreground hover:text-brand-ink"
+                      >
+                        Hide
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await viewPassword({ data: { teacherId: id } });
+                        if ("error" in r && r.error) setMessage(r.error);
+                        else if ("password" in r) {
+                          setTeacherPasswords((prev) => ({ ...prev, [id]: r.password }));
+                        }
+                      }}
+                      className="text-xs font-medium text-brand-accent hover:underline"
+                    >
+                      View password
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      await removeTeacher({ data: { teacherId: id } });
+                      onChange("teachers");
+                    }}
+                    className="text-xs font-medium text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </Panel>
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}

@@ -338,6 +338,27 @@ export type Database = {
           },
         ]
       }
+      teacher_passwords: {
+        Row: {
+          created_at: string
+          encrypted_password: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          encrypted_password: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          encrypted_password?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
