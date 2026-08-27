@@ -592,6 +592,28 @@ function PeoplePanel({
                     </button>
                   )}
                   <button
+                    type="button"
+                    onClick={async () => {
+                      const next = window.prompt(
+                        `Set a new password for ${String(t["full_name"])} (min 8 characters)`,
+                      );
+                      if (!next) return;
+                      if (next.length < 8) {
+                        setMessage("Password must be at least 8 characters.");
+                        return;
+                      }
+                      const r = await changePassword({ data: { teacherId: id, password: next } });
+                      if ("error" in r && r.error) setMessage(r.error);
+                      else {
+                        setTeacherPasswords((prev) => ({ ...prev, [id]: next }));
+                        setMessage("Password updated and saved.");
+                      }
+                    }}
+                    className="text-xs font-medium text-brand-accent hover:underline"
+                  >
+                    Set password
+                  </button>
+                  <button
                     onClick={async () => {
                       await removeTeacher({ data: { teacherId: id } });
                       onChange("teachers");
