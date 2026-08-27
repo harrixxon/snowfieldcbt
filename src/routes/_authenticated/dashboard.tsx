@@ -396,6 +396,7 @@ function PeoplePanel({
   const addTeacher = useServerFn(createTeacher);
   const removeTeacher = useServerFn(deleteTeacher);
   const viewPassword = useServerFn(getTeacherPassword);
+  const changePassword = useServerFn(setTeacherPassword);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
