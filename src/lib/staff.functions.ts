@@ -97,10 +97,53 @@ export const getTeacherPassword = createServerFn({ method: "POST" })
       .select("encrypted_password")
       .eq("user_id", data.teacherId)
       .maybeSingle();
-    if (!row) return { error: "No stored password found." };
+    if (!row)
+      return {
+        error:
+          "No stored password for this teacher (the account was created before passwords were saved). Use “Set password” to assign a new one.",
+      };
 
     const { decryptPassword } = await import("@/lib/password.server");
     return { password: decryptPassword(row.encrypted_password) };
+  });
+
+/** Admin-only: change a teacher's password and store the encrypted copy. */
+export const setTeacherPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z.object({ teacherId: z.string().uuid(), password: z.string().min(8).max(72) }).parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    if (!isAdmin) return { error: "Only administrators can change teacher passwords." };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.teacherId, {
+      password: data.password,
+    });
+    if (error) return { error: error.message };
+
+    const { encryptPassword } = await import("@/lib/password.server");
+    const encrypted = encryptPassword(data.password);
+    const { data: existing } = await supabaseAdmin
+      .from("teacher_passwords")
+      .select("id")
+      .eq("user_id", data.teacherId)
+      .maybeSingle();
+    if (existing) {
+      await supabaseAdmin
+        .from("teacher_passwords")
+        .update({ encrypted_password: encrypted })
+        .eq("user_id", data.teacherId);
+    } else {
+      await supabaseAdmin
+        .from("teacher_passwords")
+        .insert({ user_id: data.teacherId, encrypted_password: encrypted });
+    }
+    return { ok: true as const, password: data.password };
   });
 
 export const deleteTeacher = createServerFn({ method: "POST" })

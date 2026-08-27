@@ -3,7 +3,13 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { createStudent, createTeacher, deleteTeacher, getTeacherPassword } from "@/lib/staff.functions";
+import {
+  createStudent,
+  createTeacher,
+  deleteTeacher,
+  getTeacherPassword,
+  setTeacherPassword,
+} from "@/lib/staff.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   ssr: false,
@@ -390,6 +396,7 @@ function PeoplePanel({
   const addTeacher = useServerFn(createTeacher);
   const removeTeacher = useServerFn(deleteTeacher);
   const viewPassword = useServerFn(getTeacherPassword);
+  const changePassword = useServerFn(setTeacherPassword);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
@@ -584,6 +591,28 @@ function PeoplePanel({
                       View password
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = window.prompt(
+                        `Set a new password for ${String(t["full_name"])} (min 8 characters)`,
+                      );
+                      if (!next) return;
+                      if (next.length < 8) {
+                        setMessage("Password must be at least 8 characters.");
+                        return;
+                      }
+                      const r = await changePassword({ data: { teacherId: id, password: next } });
+                      if ("error" in r && r.error) setMessage(r.error);
+                      else {
+                        setTeacherPasswords((prev) => ({ ...prev, [id]: next }));
+                        setMessage("Password updated and saved.");
+                      }
+                    }}
+                    className="text-xs font-medium text-brand-accent hover:underline"
+                  >
+                    Set password
+                  </button>
                   <button
                     onClick={async () => {
                       await removeTeacher({ data: { teacherId: id } });
