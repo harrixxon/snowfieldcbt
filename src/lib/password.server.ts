@@ -7,8 +7,8 @@ const AUTH_TAG_LENGTH = 16;
 function getKey(): Buffer {
   const secret = process.env["STUDENT_SESSION_SECRET"];
   if (!secret) throw new Error("STUDENT_SESSION_SECRET is not set");
-  if (secret.length !== 64) throw new Error("STUDENT_SESSION_SECRET must be a 64-character hex string");
-  return Buffer.from(secret, "hex");
+  // Derive a fixed 32-byte key from whatever the secret is (hex or not).
+  return createHash("sha256").update(secret, "utf8").digest();
 }
 
 /** Encrypt a plaintext password; returns a base64 string. */
