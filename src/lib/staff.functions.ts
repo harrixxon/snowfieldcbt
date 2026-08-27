@@ -97,7 +97,11 @@ export const getTeacherPassword = createServerFn({ method: "POST" })
       .select("encrypted_password")
       .eq("user_id", data.teacherId)
       .maybeSingle();
-    if (!row) return { error: "No stored password found." };
+    if (!row)
+      return {
+        error:
+          "No stored password for this teacher (the account was created before passwords were saved). Use “Set password” to assign a new one.",
+      };
 
     const { decryptPassword } = await import("@/lib/password.server");
     return { password: decryptPassword(row.encrypted_password) };
