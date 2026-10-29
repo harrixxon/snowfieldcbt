@@ -422,6 +422,30 @@ function PeoplePanel({
     },
   });
 
+  const bulkStudentMutation = useMutation({
+    mutationFn: () =>
+      bulkStudents({
+        data: {
+          classId: bulkClass,
+          names: bulkText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean),
+        },
+      }),
+    onSuccess: (r) => {
+      if ("error" in r && r.error) {
+        setMessage(r.error);
+        return;
+      }
+      const range = r.firstRoll && r.lastRoll ? ` (${r.firstRoll} – ${r.lastRoll})` : "";
+      const skipped = r.failed.length ? ` Skipped: ${r.failed.join("; ")}` : "";
+      setMessage(`Added ${r.added} student${r.added === 1 ? "" : "s"}${range}.${skipped}`);
+      setBulkText("");
+      onChange("students");
+    },
+  });
+
   const teacherMutation = useMutation({
     mutationFn: () => addTeacher({ data: teacher }),
     onSuccess: (r) => {
