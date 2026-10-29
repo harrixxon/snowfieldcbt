@@ -299,13 +299,6 @@ export const bulkAddQuestions = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => bulkQuestionSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const { data: rows, error } = await (await import("@/integrations/supabase/client.server"))
-      .supabaseAdmin === undefined
-      ? { data: null, error: null }
-      : { data: null, error: null };
-    void rows;
-    void error;
-
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: subject } = await supabaseAdmin
       .from("subjects")
@@ -330,8 +323,12 @@ export const bulkAddQuestions = createServerFn({ method: "POST" })
         })),
       )
       .select("id", { count: "exact" });
-    return { ok: true as const, added: count ?? data.questions.length };
+    if (count === null) return { error: "Could not save the questions." };
+    return { ok: true as const, added: count };
   });
+
+/** True only when the email belongs to the school administrator account. */
+export const isAdminEmail = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ email: z.string().trim().email() }).parse(data))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
