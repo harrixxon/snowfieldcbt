@@ -201,14 +201,23 @@ export const createStudent = createServerFn({ method: "POST" })
     return { error: "Could not generate a unique roll number. Try again." };
   });
 
-/** Admin-only: add many students at once, one full name per line. Roll numbers are generated in sequence. */
+/** Admin-only: bulk add students. Each entry is a full name; an optional className
+ * (e.g. "SS3") overrides the default class. Roll numbers are generated per class. */
 export const bulkAddStudents = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) =>
     z
       .object({
-        classId: z.string().uuid(),
-        names: z.array(z.string().trim().min(2).max(120)).min(1).max(500),
+        classId: z.string().uuid().optional(),
+        entries: z
+          .array(
+            z.object({
+              name: z.string().trim().min(2).max(120),
+              className: z.string().trim().max(40).optional(),
+            }),
+          )
+          .min(1)
+          .max(500),
       })
       .parse(data),
   )
@@ -220,60 +229,91 @@ export const bulkAddStudents = createServerFn({ method: "POST" })
     if (!isAdmin) return { error: "Only administrators can add students." };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: klass } = await supabaseAdmin
-      .from("classes")
-      .select("name")
-      .eq("id", data.classId)
-      .maybeSingle();
-    if (!klass) return { error: "Class not found." };
+    const { data: allClasses } = await supabaseAdmin.from("classes").select("id, name");
+    if (!allClasses || allClasses.length === 0) return { error: "No classes found." };
+    const byClassName = new Map(allClasses.map((c) => [c.name.toLowerCase(), c]));
+    const defaultClass = data.classId
+      ? allClasses.find((c) => c.id === data.classId) ?? null
+      : null;
 
-    // Deduplicate while preserving order.
-    const seen = new Set<string>();
-    const names: string[] = [];
-    for (const raw of data.names) {
-      const name = raw.replace(/^\s*\d+\s*[.)\]:-]\s*/, "").trim();
-      if (name.length < 2 || seen.has(name.toLowerCase())) continue;
-      seen.add(name.toLowerCase());
-      names.push(name);
+    // Resolve each entry to a class, deduplicating per class.
+    const perClass = new Map<string, { id: string; name: string; names: string[] }>();
+    const skipped: string[] = [];
+    for (const entry of data.entries) {
+      const name = entry.name.replace(/^\s*\d+\s*[.)\]:-]\s*/, "").trim();
+      if (name.length < 2) continue;
+      const klass = entry.className
+        ? byClassName.get(entry.className.toLowerCase()) ?? null
+        : defaultClass;
+      if (!klass) {
+        skipped.push(
+          `${name}: ${entry.className ? `class “${entry.className}” not found` : "no class given"}`,
+        );
+        continue;
+      }
+      let bucket = perClass.get(klass.id);
+      if (!bucket) {
+        bucket = { id: klass.id, name: klass.name, names: [] };
+        perClass.set(klass.id, bucket);
+      }
+      if (!bucket.names.some((n) => n.toLowerCase() === name.toLowerCase()))
+        bucket.names.push(name);
     }
-    if (names.length === 0) return { error: "No valid student names found in the list." };
+    if (perClass.size === 0)
+      return { error: "No valid students found — check names and class names.", skipped };
 
+    // Existing roll numbers per class so numbering continues from the last one.
+    const classIds = [...perClass.keys()];
     const { count } = await supabaseAdmin
       .from("students")
       .select("id", { count: "exact", head: true })
-      .eq("class_id", data.classId);
-    let seq = (count ?? 0) + 1;
+      .in("class_id", classIds);
+    void count;
 
     let added = 0;
-    let firstRoll: string | null = null;
-    let lastRoll: string | null = null;
+    const firstRolls: string[] = [];
+    const lastRolls: string[] = [];
     const failed: string[] = [];
-    for (const name of names) {
-      let inserted = false;
-      for (let attempt = 0; attempt < 8 && !inserted; attempt++) {
-        const rollNumber = `${klass.name}-${String(seq).padStart(3, "0")}`;
-        const { error } = await supabaseAdmin.from("students").insert({
-          full_name: name,
-          class_id: data.classId,
-          roll_number: rollNumber,
-        });
-        if (!error) {
-          inserted = true;
-          added += 1;
-          if (!firstRoll) firstRoll = rollNumber;
-          lastRoll = rollNumber;
-        } else if (error.message.includes("duplicate")) {
-          seq += 1; // roll number taken, try the next one
-        } else {
-          failed.push(`${name}: ${error.message}`);
-          break;
+    for (const bucket of perClass.values()) {
+      const { count: existing } = await supabaseAdmin
+        .from("students")
+        .select("id", { count: "exact", head: true })
+        .eq("class_id", bucket.id);
+      let seq = (existing ?? 0) + 1;
+      for (const name of bucket.names) {
+        let inserted = false;
+        for (let attempt = 0; attempt < 12 && !inserted; attempt++) {
+          const rollNumber = `${bucket.name}-${String(seq).padStart(3, "0")}`;
+          const { error } = await supabaseAdmin.from("students").insert({
+            full_name: name,
+            class_id: bucket.id,
+            roll_number: rollNumber,
+          });
+          if (!error) {
+            inserted = true;
+            added += 1;
+            if (!firstRolls.includes(rollNumber) && firstRolls.length < 3) firstRolls.push(rollNumber);
+            if (lastRolls.length >= 3) lastRolls.shift();
+            lastRolls.push(rollNumber);
+          } else if (error.message.includes("duplicate")) {
+            seq += 1;
+          } else {
+            failed.push(`${name}: ${error.message}`);
+            break;
+          }
         }
+        if (!inserted && failed.every((f) => !f.startsWith(`${name}: `)))
+          failed.push(`${name}: could not allocate a roll number`);
+        seq += 1;
       }
-      if (!inserted && failed.every((f) => !f.startsWith(`${name}: `)))
-        failed.push(`${name}: could not allocate a roll number`);
-      seq += 1;
     }
-    return { ok: true as const, added, firstRoll, lastRoll, failed };
+    return {
+      ok: true as const,
+      added,
+      firstRoll: firstRolls[0] ?? null,
+      lastRoll: lastRolls[lastRolls.length - 1] ?? null,
+      failed: [...skipped, ...failed],
+    };
   });
 
 const bulkQuestionSchema = z.object({
