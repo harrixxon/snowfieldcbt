@@ -748,7 +748,7 @@ function parseBulkQuestions(text: string): { questions: ParsedQuestion[]; proble
       }
       textLines.push(l);
     }
-    const qText = textLines.join(" ").trim();
+    const qText = textLines.join(" ").trim().replace(/^\d+\s*[.)\]:-]\s*/, "");
     const missing: string[] = [];
     if (!qText) missing.push("question text");
     (["A", "B", "C", "D"] as const).forEach((k) => {
