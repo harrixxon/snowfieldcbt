@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  bulkAddQuestions,
+  bulkAddStudents,
   createStudent,
   createTeacher,
   deleteTeacher,
@@ -393,12 +395,15 @@ function PeoplePanel({
   onChange: (k: string) => void;
 }) {
   const addStudent = useServerFn(createStudent);
+  const bulkStudents = useServerFn(bulkAddStudents);
   const addTeacher = useServerFn(createTeacher);
   const removeTeacher = useServerFn(deleteTeacher);
   const viewPassword = useServerFn(getTeacherPassword);
   const changePassword = useServerFn(setTeacherPassword);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
+  const [bulkText, setBulkText] = useState("");
+  const [bulkClass, setBulkClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [studentFilter, setStudentFilter] = useState("");
@@ -631,6 +636,78 @@ function PeoplePanel({
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
     </>
   );
+}
+
+type ParsedQuestion = {
+  text: string;
+  a: string;
+  b: string;
+  c: string;
+  d: string;
+  correct: "A" | "B" | "C" | "D";
+  marks: number;
+};
+
+/** Parses pasted question blocks: question text, A–D options, "Answer: X", optional "Marks: n". */
+function parseBulkQuestions(text: string): { questions: ParsedQuestion[]; problems: string[] } {
+  const questions: ParsedQuestion[] = [];
+  const problems: string[] = [];
+  const blocks = text
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const optionRe = /^([A-Da-d])\s*[).:\-]\s*(.+)$/;
+  const answerRe = /^answers?\s*[:\-]?\s*([A-Da-d])\b/i;
+  const marksRe = /^marks?\s*[:\-]?\s*(\d+)\s*$/i;
+
+  blocks.forEach((block, i) => {
+    const n = i + 1;
+    const options: Partial<Record<"A" | "B" | "C" | "D", string>> = {};
+    let correct: "A" | "B" | "C" | "D" | null = null;
+    let marks = 1;
+    const textLines: string[] = [];
+    for (const line of block.split("\n")) {
+      const l = line.trim();
+      if (!l) continue;
+      const ans = l.match(answerRe);
+      if (ans) {
+        correct = ans[1].toUpperCase() as "A" | "B" | "C" | "D";
+        continue;
+      }
+      const mk = l.match(marksRe);
+      if (mk) {
+        marks = Math.max(1, parseInt(mk[1], 10) || 1);
+        continue;
+      }
+      const opt = l.match(optionRe);
+      if (opt) {
+        options[opt[1].toUpperCase() as "A" | "B" | "C" | "D"] = opt[2].trim();
+        continue;
+      }
+      textLines.push(l);
+    }
+    const qText = textLines.join(" ").trim();
+    const missing: string[] = [];
+    if (!qText) missing.push("question text");
+    (["A", "B", "C", "D"] as const).forEach((k) => {
+      if (!options[k]) missing.push(`option ${k}`);
+    });
+    if (!correct) missing.push("answer line (e.g. Answer: B)");
+    if (missing.length) {
+      problems.push(`Block ${n}: missing ${missing.join(", ")}`);
+      return;
+    }
+    questions.push({
+      text: qText,
+      a: options.A!,
+      b: options.B!,
+      c: options.C!,
+      d: options.D!,
+      correct: correct!,
+      marks,
+    });
+  });
+  return { questions, problems };
 }
 
 function QuestionsPanel({
