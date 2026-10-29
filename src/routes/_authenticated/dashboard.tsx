@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  bulkAddQuestions,
+  bulkAddStudents,
   createStudent,
   createTeacher,
   deleteTeacher,
@@ -393,12 +395,15 @@ function PeoplePanel({
   onChange: (k: string) => void;
 }) {
   const addStudent = useServerFn(createStudent);
+  const bulkStudents = useServerFn(bulkAddStudents);
   const addTeacher = useServerFn(createTeacher);
   const removeTeacher = useServerFn(deleteTeacher);
   const viewPassword = useServerFn(getTeacherPassword);
   const changePassword = useServerFn(setTeacherPassword);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
+  const [bulkText, setBulkText] = useState("");
+  const [bulkClass, setBulkClass] = useState("");
   const [teacher, setTeacher] = useState({ fullName: "", email: "", password: "", subject: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [studentFilter, setStudentFilter] = useState("");
@@ -413,6 +418,30 @@ function PeoplePanel({
     onSuccess: (r) => {
       setMessage("error" in r && r.error ? r.error : `Added. Roll number: ${"rollNumber" in r ? r.rollNumber : ""}`);
       setStudentName("");
+      onChange("students");
+    },
+  });
+
+  const bulkStudentMutation = useMutation({
+    mutationFn: () =>
+      bulkStudents({
+        data: {
+          classId: bulkClass,
+          names: bulkText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean),
+        },
+      }),
+    onSuccess: (r) => {
+      if ("error" in r && r.error) {
+        setMessage(r.error);
+        return;
+      }
+      const range = r.firstRoll && r.lastRoll ? ` (${r.firstRoll} – ${r.lastRoll})` : "";
+      const skipped = r.failed.length ? ` Skipped: ${r.failed.join("; ")}` : "";
+      setMessage(`Added ${r.added} student${r.added === 1 ? "" : "s"}${range}.${skipped}`);
+      setBulkText("");
       onChange("students");
     },
   });
@@ -459,6 +488,44 @@ function PeoplePanel({
           <button className={btnClass} disabled={studentMutation.isPending}>
             Add student
           </button>
+        </form>
+      </Panel>
+
+      <Panel title="Bulk add students">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            bulkStudentMutation.mutate();
+          }}
+        >
+          <select
+            className={inputClass}
+            required
+            value={bulkClass}
+            onChange={(e) => setBulkClass(e.target.value)}
+          >
+            <option value="">Select class for all names</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <textarea
+            className={`${inputClass} font-mono text-xs`}
+            rows={10}
+            required
+            placeholder={"One student per line. Numbering like “1.” is ignored.\ne.g.\nAdaeze Obi\n2. Chinedu Okafor\nFatima Bello"}
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+          />
+          <button className={btnClass} disabled={bulkStudentMutation.isPending}>
+            Add all students
+          </button>
+          <p className="text-xs text-muted-foreground">
+            Roll numbers are generated automatically, continuing from the last one in the class.
+          </p>
         </form>
       </Panel>
 
@@ -633,6 +700,162 @@ function PeoplePanel({
   );
 }
 
+type ParsedQuestion = {
+  text: string;
+  a: string;
+  b: string;
+  c: string;
+  d: string;
+  correct: "A" | "B" | "C" | "D";
+  marks: number;
+};
+
+/** Parses pasted question blocks: question text, A–D options, "Answer: X", optional "Marks: n". */
+function parseBulkQuestions(text: string): { questions: ParsedQuestion[]; problems: string[] } {
+  const questions: ParsedQuestion[] = [];
+  const problems: string[] = [];
+  const blocks = text
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const optionRe = /^([A-Da-d])\s*[).:\-]\s*(.+)$/;
+  const answerRe = /^answers?\s*[:\-]?\s*([A-Da-d])\b/i;
+  const marksRe = /^marks?\s*[:\-]?\s*(\d+)\s*$/i;
+
+  blocks.forEach((block, i) => {
+    const n = i + 1;
+    const options: Partial<Record<"A" | "B" | "C" | "D", string>> = {};
+    let correct: "A" | "B" | "C" | "D" | null = null;
+    let marks = 1;
+    const textLines: string[] = [];
+    for (const line of block.split("\n")) {
+      const l = line.trim();
+      if (!l) continue;
+      const ans = l.match(answerRe);
+      if (ans) {
+        correct = ans[1].toUpperCase() as "A" | "B" | "C" | "D";
+        continue;
+      }
+      const mk = l.match(marksRe);
+      if (mk) {
+        marks = Math.max(1, parseInt(mk[1], 10) || 1);
+        continue;
+      }
+      const opt = l.match(optionRe);
+      if (opt) {
+        options[opt[1].toUpperCase() as "A" | "B" | "C" | "D"] = opt[2].trim();
+        continue;
+      }
+      textLines.push(l);
+    }
+    const qText = textLines.join(" ").trim().replace(/^\d+\s*[.)\]:-]\s*/, "");
+    const missing: string[] = [];
+    if (!qText) missing.push("question text");
+    (["A", "B", "C", "D"] as const).forEach((k) => {
+      if (!options[k]) missing.push(`option ${k}`);
+    });
+    if (!correct) missing.push("answer line (e.g. Answer: B)");
+    if (missing.length) {
+      problems.push(`Block ${n}: missing ${missing.join(", ")}`);
+      return;
+    }
+    questions.push({
+      text: qText,
+      a: options.A!,
+      b: options.B!,
+      c: options.C!,
+      d: options.D!,
+      correct: correct!,
+      marks,
+    });
+  });
+  return { questions, problems };
+}
+
+function BulkQuestionsPanel({
+  subjects,
+  onChange,
+}: {
+  subjects: Row[];
+  onChange: (k: string) => void;
+}) {
+  const bulkQuestions = useServerFn(bulkAddQuestions);
+  const [subjectId, setSubjectId] = useState("");
+  const [bulkText, setBulkText] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const parsed = useMemo(() => parseBulkQuestions(bulkText), [bulkText]);
+
+  const mutation = useMutation({
+    mutationFn: () => bulkQuestions({ data: { subjectId, questions: parsed.questions } }),
+    onSuccess: (r) => {
+      if ("error" in r && r.error) {
+        setFeedback(r.error);
+        return;
+      }
+      setFeedback(`Added ${r.added} question${r.added === 1 ? "" : "s"}.`);
+      setBulkText("");
+      onChange("questions");
+    },
+    onError: (e) => setFeedback(e instanceof Error ? e.message : String(e)),
+  });
+
+  return (
+    <Panel title="Bulk add questions">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          mutation.mutate();
+        }}
+      >
+        <select
+          className={inputClass}
+          required
+          value={subjectId}
+          onChange={(e) => setSubjectId(e.target.value)}
+        >
+          <option value="">Select subject for all questions</option>
+          {subjects.map((s) => (
+            <option key={String(s['id'])} value={String(s['id'])}>
+              {String(s['name'])} · {String((s['classes'] as { name?: string } | null)?.name ?? "")}
+            </option>
+          ))}
+        </select>
+        <textarea
+          className={`${inputClass} font-mono text-xs`}
+          rows={12}
+          required
+          placeholder={`Separate questions with a blank line.\n\nWhat is 2 + 2?\nA) 3\nB) 4\nC) 5\nD) 22\nAnswer: B\n\nThe capital of Lagos State is?\nA) Ikeja\nB) Badagry\nC) Epe\nD) Lekki\nAnswer: A\nMarks: 2`}
+          value={bulkText}
+          onChange={(e) => setBulkText(e.target.value)}
+        />
+        {parsed.problems.length > 0 ? (
+          <ul className="list-inside list-disc text-xs text-destructive">
+            {parsed.problems.slice(0, 5).map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        ) : parsed.questions.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {parsed.questions.length} question{parsed.questions.length === 1 ? "" : "s"} ready to add.
+          </p>
+        ) : null}
+        <button
+          className={btnClass}
+          disabled={mutation.isPending || parsed.questions.length === 0}
+        >
+          Add all questions
+        </button>
+        {feedback ? <p className="text-sm text-muted-foreground">{feedback}</p> : null}
+        <p className="text-xs text-muted-foreground">
+          Format per question: question text, options A)–D), “Answer: X”, and an optional “Marks: n”
+          (default 1). Separate questions with a blank line.
+        </p>
+      </form>
+    </Panel>
+  );
+}
+
 function QuestionsPanel({
   subjects,
   classes,
@@ -747,6 +970,10 @@ function QuestionsPanel({
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </form>
         </Panel>
+      ) : null}
+
+      {!isAdmin ? (
+        <BulkQuestionsPanel subjects={subjects} onChange={onChange} />
       ) : null}
 
       <Panel title={`Question bank (${visible.length})`}>

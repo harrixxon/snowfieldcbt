@@ -201,6 +201,172 @@ export const createStudent = createServerFn({ method: "POST" })
     return { error: "Could not generate a unique roll number. Try again." };
   });
 
+/** Admin-only: bulk add students. Each entry is a full name; an optional className
+ * (e.g. "SS3") overrides the default class. Roll numbers are generated per class. */
+export const bulkAddStudents = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        classId: z.string().uuid().optional(),
+        entries: z
+          .array(
+            z.object({
+              name: z.string().trim().min(2).max(120),
+              className: z.string().trim().max(40).optional(),
+            }),
+          )
+          .min(1)
+          .max(500),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    if (!isAdmin) return { error: "Only administrators can add students." };
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: allClasses } = await supabaseAdmin.from("classes").select("id, name");
+    if (!allClasses || allClasses.length === 0) return { error: "No classes found." };
+    const byClassName = new Map(allClasses.map((c) => [c.name.toLowerCase(), c]));
+    const defaultClass = data.classId
+      ? allClasses.find((c) => c.id === data.classId) ?? null
+      : null;
+
+    // Resolve each entry to a class, deduplicating per class.
+    const perClass = new Map<string, { id: string; name: string; names: string[] }>();
+    const skipped: string[] = [];
+    for (const entry of data.entries) {
+      const name = entry.name.replace(/^\s*\d+\s*[.)\]:-]\s*/, "").trim();
+      if (name.length < 2) continue;
+      const klass = entry.className
+        ? byClassName.get(entry.className.toLowerCase()) ?? null
+        : defaultClass;
+      if (!klass) {
+        skipped.push(
+          `${name}: ${entry.className ? `class “${entry.className}” not found` : "no class given"}`,
+        );
+        continue;
+      }
+      let bucket = perClass.get(klass.id);
+      if (!bucket) {
+        bucket = { id: klass.id, name: klass.name, names: [] };
+        perClass.set(klass.id, bucket);
+      }
+      if (!bucket.names.some((n) => n.toLowerCase() === name.toLowerCase()))
+        bucket.names.push(name);
+    }
+    if (perClass.size === 0)
+      return { error: "No valid students found — check names and class names.", skipped };
+
+    // Existing roll numbers per class so numbering continues from the last one.
+    const classIds = [...perClass.keys()];
+    const { count } = await supabaseAdmin
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .in("class_id", classIds);
+    void count;
+
+    let added = 0;
+    const firstRolls: string[] = [];
+    const lastRolls: string[] = [];
+    const failed: string[] = [];
+    for (const bucket of perClass.values()) {
+      const { count: existing } = await supabaseAdmin
+        .from("students")
+        .select("id", { count: "exact", head: true })
+        .eq("class_id", bucket.id);
+      let seq = (existing ?? 0) + 1;
+      for (const name of bucket.names) {
+        let inserted = false;
+        for (let attempt = 0; attempt < 12 && !inserted; attempt++) {
+          const rollNumber = `${bucket.name}-${String(seq).padStart(3, "0")}`;
+          const { error } = await supabaseAdmin.from("students").insert({
+            full_name: name,
+            class_id: bucket.id,
+            roll_number: rollNumber,
+          });
+          if (!error) {
+            inserted = true;
+            added += 1;
+            if (!firstRolls.includes(rollNumber) && firstRolls.length < 3) firstRolls.push(rollNumber);
+            if (lastRolls.length >= 3) lastRolls.shift();
+            lastRolls.push(rollNumber);
+          } else if (error.message.includes("duplicate")) {
+            seq += 1;
+          } else {
+            failed.push(`${name}: ${error.message}`);
+            break;
+          }
+        }
+        if (!inserted && failed.every((f) => !f.startsWith(`${name}: `)))
+          failed.push(`${name}: could not allocate a roll number`);
+        seq += 1;
+      }
+    }
+    return {
+      ok: true as const,
+      added,
+      firstRoll: firstRolls[0] ?? null,
+      lastRoll: lastRolls[lastRolls.length - 1] ?? null,
+      failed: [...skipped, ...failed],
+    };
+  });
+
+const bulkQuestionSchema = z.object({
+  subjectId: z.string().uuid(),
+  questions: z
+    .array(
+      z.object({
+        text: z.string().trim().min(1),
+        a: z.string().trim().min(1),
+        b: z.string().trim().min(1),
+        c: z.string().trim().min(1),
+        d: z.string().trim().min(1),
+        correct: z.enum(["A", "B", "C", "D"]),
+        marks: z.number().int().min(1).max(100).default(1),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/** Teacher-only: add many questions at once for one subject. */
+export const bulkAddQuestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => bulkQuestionSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: subject } = await supabaseAdmin
+      .from("subjects")
+      .select("id")
+      .eq("id", data.subjectId)
+      .maybeSingle();
+    if (!subject) return { error: "Subject not found." };
+
+    const { count } = await supabaseAdmin
+      .from("questions")
+      .insert(
+        data.questions.map((q) => ({
+          subject_id: data.subjectId,
+          teacher_id: context.userId,
+          question_text: q.text,
+          option_a: q.a,
+          option_b: q.b,
+          option_c: q.c,
+          option_d: q.d,
+          correct_option: q.correct,
+          marks: q.marks,
+        })),
+      )
+      .select("id", { count: "exact" });
+    if (count === null) return { error: "Could not save the questions." };
+    return { ok: true as const, added: count };
+  });
+
 /** True only when the email belongs to the school administrator account. */
 export const isAdminEmail = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ email: z.string().trim().email() }).parse(data))
