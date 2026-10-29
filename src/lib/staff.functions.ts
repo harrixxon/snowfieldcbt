@@ -262,17 +262,15 @@ export const bulkAddStudents = createServerFn({ method: "POST" })
           added += 1;
           if (!firstRoll) firstRoll = rollNumber;
           lastRoll = rollNumber;
-        } else if (!error.message.includes("duplicate")) {
+        } else if (error.message.includes("duplicate")) {
+          seq += 1; // roll number taken, try the next one
+        } else {
           failed.push(`${name}: ${error.message}`);
           break;
-        } else {
-          seq += 1;
         }
       }
-      if (!inserted && failed[failed.length - 1] !== `${name}: duplicate roll numbers exhausted`) {
-        if (failed.length === 0 || !failed[failed.length - 1].startsWith(`${name}: `))
-          failed.push(`${name}: could not allocate a roll number`);
-      }
+      if (!inserted && failed.every((f) => !f.startsWith(`${name}: `)))
+        failed.push(`${name}: could not allocate a roll number`);
       seq += 1;
     }
     return { ok: true as const, added, firstRoll, lastRoll, failed };
