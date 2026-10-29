@@ -491,6 +491,44 @@ function PeoplePanel({
         </form>
       </Panel>
 
+      <Panel title="Bulk add students">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            bulkStudentMutation.mutate();
+          }}
+        >
+          <select
+            className={inputClass}
+            required
+            value={bulkClass}
+            onChange={(e) => setBulkClass(e.target.value)}
+          >
+            <option value="">Select class for all names</option>
+            {classes.map((c) => (
+              <option key={String(c['id'])} value={String(c['id'])}>
+                {String(c['name'])}
+              </option>
+            ))}
+          </select>
+          <textarea
+            className={`${inputClass} font-mono text-xs`}
+            rows={10}
+            required
+            placeholder={"One student per line. Numbering like “1.” is ignored.\ne.g.\nAdaeze Obi\n2. Chinedu Okafor\nFatima Bello"}
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+          />
+          <button className={btnClass} disabled={bulkStudentMutation.isPending}>
+            Add all students
+          </button>
+          <p className="text-xs text-muted-foreground">
+            Roll numbers are generated automatically, continuing from the last one in the class.
+          </p>
+        </form>
+      </Panel>
+
       <Panel title={`Students (${visibleStudents.length})`}>
         <select
           className={`${inputClass} mb-4 max-w-xs`}
@@ -848,6 +886,14 @@ function QuestionsPanel({
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </form>
         </Panel>
+      ) : null}
+
+      {!isAdmin ? (
+        <BulkQuestionsPanel
+          subjects={subjects}
+          onChange={onChange}
+          onError={(msg) => setError(msg)}
+        />
       ) : null}
 
       <Panel title={`Question bank (${visible.length})`}>
