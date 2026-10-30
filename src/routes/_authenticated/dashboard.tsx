@@ -427,10 +427,11 @@ function PeoplePanel({
       bulkStudents({
         data: {
           classId: bulkClass,
-          names: bulkText
+          entries: bulkText
             .split("\n")
             .map((l) => l.trim())
-            .filter(Boolean),
+            .filter(Boolean)
+            .map((name) => ({ name })),
         },
       }),
     onSuccess: (r) => {
