@@ -732,17 +732,17 @@ function parseBulkQuestions(text: string): { questions: ParsedQuestion[]; proble
       const l = line.trim();
       if (!l) continue;
       const ans = l.match(answerRe);
-      if (ans) {
+      if (ans && ans[1]) {
         correct = ans[1].toUpperCase() as "A" | "B" | "C" | "D";
         continue;
       }
       const mk = l.match(marksRe);
-      if (mk) {
+      if (mk && mk[1]) {
         marks = Math.max(1, parseInt(mk[1], 10) || 1);
         continue;
       }
       const opt = l.match(optionRe);
-      if (opt) {
+      if (opt && opt[1] && opt[2]) {
         options[opt[1].toUpperCase() as "A" | "B" | "C" | "D"] = opt[2].trim();
         continue;
       }

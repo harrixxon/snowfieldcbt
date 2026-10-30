@@ -347,7 +347,7 @@ export const bulkAddQuestions = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!subject) return { error: "Subject not found." };
 
-    const { count } = await supabaseAdmin
+    const { data: inserted, error } = await supabaseAdmin
       .from("questions")
       .insert(
         data.questions.map((q) => ({
@@ -362,9 +362,9 @@ export const bulkAddQuestions = createServerFn({ method: "POST" })
           marks: q.marks,
         })),
       )
-      .select("id", { count: "exact" });
-    if (count === null) return { error: "Could not save the questions." };
-    return { ok: true as const, added: count };
+      .select("id");
+    if (error) return { error: error.message };
+    return { ok: true as const, added: inserted?.length ?? 0 };
   });
 
 /** True only when the email belongs to the school administrator account. */
