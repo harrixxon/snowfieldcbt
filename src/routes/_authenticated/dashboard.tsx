@@ -890,7 +890,7 @@ function QuestionsPanel({
 
   return (
     <>
-      {!isAdmin ? (
+      {true ? (
         <Panel title="Add question">
           <form
             className="space-y-3"
@@ -973,7 +973,7 @@ function QuestionsPanel({
         </Panel>
       ) : null}
 
-      {!isAdmin ? (
+      {true ? (
         <BulkQuestionsPanel subjects={subjects} onChange={onChange} />
       ) : null}
 
@@ -1093,7 +1093,7 @@ function ExamsPanel({
 
   return (
     <>
-      {!isAdmin ? (
+      {true ? (
         <Panel title="Schedule an exam">
           <form
             className="space-y-3"
